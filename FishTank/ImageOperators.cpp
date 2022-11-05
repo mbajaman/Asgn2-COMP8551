@@ -10,23 +10,24 @@
 	t = _mm_loadu_si128((__m128i *) pSrc[(comp)]);                      \
 	_mm_storeu_si128((__m128i *) pDst[(comp)], _mm_packus_epi16(_mm_srli_epi16(_mm_add_epi16(_mm_mullo_epi16(_mm_unpacklo_epi8(t, zero), a0), _mm_mullo_epi16(_mm_sub_epi16(ff, a0), d0)), 8), _mm_srli_epi16(_mm_add_epi16(_mm_mullo_epi16(_mm_unpackhi_epi8(t, zero), a1), _mm_mullo_epi16(_mm_sub_epi16(ff, a1), d1)), 8)))                      
 
+// Takes in two images, src and dst, and blends src into dst at the specified offset.
 void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int dstYOffset, SimdMode simdMode)
 {
 	if (src.spectrum() != 4) throw cimg_library::CImgException("blitBlend: Src image is missing ALPHA channel");
 
 	// calcualte our SIMD blend area (defined by X0, Y0 to X1, Y1). Take into account alignment restrictions;
 
-	unsigned int X1 = src.width() + dstXOffset;
+	unsigned int X1 = src.width() + dstXOffset; // right edge of src image
 	if (X1 > dst.width()) X1 = dst.width();
-	unsigned int X0 = dstXOffset;
+	unsigned int X0 = dstXOffset; // left edge of src image
 
-	unsigned int Y1 = src.height() + dstYOffset;
+	unsigned int Y1 = src.height() + dstYOffset; // bottom edge of src image
 	if (Y1 > dst.height()) Y1 = dst.height();
 
-	unsigned int Y0 = dstYOffset;
+	unsigned int Y0 = dstYOffset; // top edge of src image
 	// TODO: Y0 & Y1 need to be aligned.
 
-
+	// loop over the area and blend the pixels ????
 	for (unsigned int y = Y0, srcLine = 0; y < Y1; y++, srcLine++) {
 		unsigned char *pSrc[4];
 		pSrc[0] = src.data(0, srcLine, 0, 0);
@@ -43,16 +44,17 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 		//*** __m128i maps to 128-bit XMM registers
 		__m128i ff = _mm_loadu_si128((__m128i *)ffconst);
 
+#pragma region EMMX
 		if (simdMode == SIMD_EMMX) {
 			for (unsigned x = X0; x < X1; x += 16) {
 				__asm {
-					pxor xmm0, xmm0 // xmm0 <- 0
-					mov eax, dword ptr [pSrc + 12]
-					movdqu xmm1, [eax]; xmm1 <- *pSrc[3]
-					movdqa xmm2, xmm1; 
-					punpcklbw xmm2, xmm0; // xmm2 <- a0, 16bit
+					pxor xmm0, xmm0							// Set register xmm0 to 0
+					mov eax, dword ptr[pSrc + 12]			// Copy the 32-bit contents of [pSrc + 12] (Is that pSrc[3]?) into eax
+					movdqu xmm1, [eax]; xmm1 < -*pSrc[3]	// Copy the 128-bit contents of [eax] into xmm1 (IDK about second half?)
+					movdqa xmm2, xmm1;						// Copy the address of xmm1 over to xmm2
+					punpcklbw xmm2, xmm0;					// xmm2 <- a0, 16bit
 					movdqa xmm3, xmm1;
-					punpckhbw xmm3, xmm0; // xxm3 <- a1, 16bit
+					punpckhbw xmm3, xmm0;					// xxm3 <- a1, 16bit
 
 					// blending the red;
 					// load d0
@@ -177,7 +179,10 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 				pDst[1] += 16;
 				pDst[2] += 16;
 			}
-		} else if (simdMode == SIMD_NONE) {
+		}
+#pragma endregion
+#pragma region SIMD_NONE
+		else if (simdMode == SIMD_NONE) {
 			for (unsigned int x = X0; x < X1; x++) {
 				short diff;
 				short tmp;
@@ -203,7 +208,10 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 				pDst[1] += 1;
 				pDst[2] += 1;
 			}
-		} else if (simdMode == SIMD_EMMX_INTRINSICS) {
+		}
+#pragma endregion
+#pragma region EMMX_INTRINSICS
+		else if (simdMode == SIMD_EMMX_INTRINSICS) {
 
 			for (unsigned x = X0; x < X1; x += 16) {
 				register __m128i s0, s1, d0, d1, a0, a1, r0, r1, zero;
@@ -228,6 +236,6 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 				pDst[2] += 16;
 			}
 		}
-
+#pragma endregion
 	}
 }

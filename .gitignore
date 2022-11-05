@@ -34,6 +34,12 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
+# Another VS project folder I think, not sure what this is for tbh
+.idea/
+
+# C++ debug settings for VS
+CppProperties.json
+
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 # Uncomment if you have tasks that create the project's static files in wwwroot
