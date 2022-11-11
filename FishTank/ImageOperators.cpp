@@ -28,56 +28,119 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 	// TODO: Y0 & Y1 need to be aligned.
 
 	// loop over the area and blend the pixels ????
-	for (unsigned int y = Y0, srcLine = 0; y < Y1; y++, srcLine++) {
+	for (unsigned int y = Y0, srcLine = 0; y < Y1; y++, srcLine++) { // For each row from top to bottom
 		unsigned char *pSrc[4];
-		pSrc[0] = src.data(0, srcLine, 0, 0);
-		pSrc[1] = src.data(0, srcLine, 0, 1);
-		pSrc[2] = src.data(0, srcLine, 0, 2);
+		pSrc[0] = src.data(0, srcLine, 0, 0); // 4 bits
+		pSrc[1] = src.data(0, srcLine, 0, 1); // 4 bits
+		pSrc[2] = src.data(0, srcLine, 0, 2); // 4 bits = 12 at this point
 		pSrc[3] = src.data(0, srcLine, 0, 3);
 
 		unsigned char *pDst[4];
 		pDst[0] = dst.data(X0, y, 0, 0);
 		pDst[1] = dst.data(X0, y, 0, 1);
 		pDst[2] = dst.data(X0, y, 0, 2);
+		// NO ALPHA ??? BUT pDST[4] HUUUH???
 
-		short ffconst[8] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+		// Fill ffconst with all 255 color values
+		// ffconst[8] = {r,g,b,a,r,g,b,0}
+		short ffconst[8] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
 		//*** __m128i maps to 128-bit XMM registers
+		// Loads the ffconst above from memory into destination (__mm128i ff)
 		__m128i ff = _mm_loadu_si128((__m128i *)ffconst);
 
+		/*
+		XMM0 = Used as all 0s (DOESN'T CHANGE)
+		XMM1 = For pSrc and pDst content
+		XMM2 & XMM3 = Those half alpha value blending shenanigans
+		XMM4 = ffconst, which is black, maybe has to do with removing the black from the bubble (DOESN'T CHANGE)
+		XMM5 = This modifies ffconst and uses that modified value to calculate XMM6
+		XMM6 = Those half alpha value belnding shenanigans BUT for destination and ffconst?
+		XMM7 = Keeps the color of the Bubble (a.k.a the outline of it)
+		*/
 #pragma region EMMX
 		if (simdMode == SIMD_EMMX) {
-			for (unsigned x = X0; x < X1; x += 16) {
+			for (unsigned x = X0; x < X1; x += 16) {		// For each column from left to right:
 				__asm {
-					pxor xmm0, xmm0							// Set register xmm0 to 0
-					mov eax, dword ptr[pSrc + 12]			// Copy the 32-bit contents of [pSrc + 12] (Is that pSrc[3]?) into eax
-					movdqu xmm1, [eax]; xmm1 < -*pSrc[3]	// Copy the 128-bit contents of [eax] into xmm1 (IDK about second half?)
-					movdqa xmm2, xmm1;						// Copy the address of xmm1 over to xmm2
-					punpcklbw xmm2, xmm0;					// xmm2 <- a0, 16bit
-					movdqa xmm3, xmm1;
-					punpckhbw xmm3, xmm0;					// xxm3 <- a1, 16bit
+					// Save half of pSrc[3] in xmm2 and other half in xmm3 //
 
-					// blending the red;
-					// load d0
+					// Set register xmm0 to 0
+					pxor xmm0, xmm0			
+					
+					// Copy the 32-bit address of [pSrc + 12] (Which is pSrc[3]) into eax
+					mov eax, dword ptr[pSrc + 12]			
+
+					//xmm1 <- *pSrc[3] Copy the 128-bit contents of that [eax] points to into xmm1
+					movdqu xmm1, [eax];
+					
+					// Copy the contents of xmm1 over to xmm2
+					movdqa xmm2, xmm1;
+					
+					// Make xmm2 like this => 8 8 0 0 (?)
+					punpcklbw xmm2, xmm0; // xmm2 <- a0, 16bit
+					
+					// Copy the contents of xmm1 over to xmm3
+					movdqa xmm3, xmm1;
+
+					// xxm3 <- a1, 16bit // 0000 0000 XXXX XXXX
+					punpckhbw xmm3, xmm0;
+
+					/* ========================== RED ========================== */
+					/* blending the red;
+					 *Save half of pDst[0] in xmm6 and other half in xmm7
+					 *load d0
+					 */ 
+					
+					// Copy the contents of pDst[0] to EAX register
+					// Store the address of pDst[0] to EAX register (pDst is the background)
 					mov eax, dword ptr[pDst + 0]; 
+
+					// Copy the 32-bit contents of [eax] into xmm1
 					movdqu xmm1, [eax]; // xmm1 = pDst[0]
+
+					// Copy the contents of xmm1 to xmm6
 					movdqa xmm6, xmm1;
+					
+					// Unpack the lower 8 bytes of xmm1 into xmm6
 					punpcklbw xmm6, xmm0; // xmm6 <- pDst[0] low 16bit
+					
+					// Unpack the higher 8 bytes of xmm1 into xmm7
+					// Copy the contents of xmm1 over to xmm7
 					movdqa xmm7, xmm1;
+					
+					// Unpack the higher
 					punpckhbw xmm7, xmm0; // xmm7 <- pDst[0] high, 16 bit
-					// load the ff constant
+
+					// Copy the contents of ffconst into XMM4
 					movdqu xmm4, [ffconst]; // xmm4 <- ff
+
+					// Copy XMM4 (ffconst) to register XMM5
 					movdqa xmm5, xmm4; 
+
+					// Subtract XMM2 (Alpha channel) from XMM5 (ffconst)
 					psubw  xmm5, xmm2; // xmm5 = ff - a0
+
+					// Multiply XMM5 (ffconst) and XMM6 (lower half of pDst[0]) (?)
 					pmullw xmm6, xmm5; // xmm6 = (ff - a0) * d0;
+
 					// now for the upper bits
-					movdqa xmm5, xmm4;
+					movdqa xmm5, xmm4; // put 4 in 5
 					psubw  xmm5, xmm3; // xmm5 = ff - a1
 					pmullw xmm7, xmm5; // xmm7 = (ff - a1) * d1;
+
 					// load the source;
+
+					// Store the address of pSrc[0] to EAX register (pSrc is the background)
 					mov eax, dword ptr[pSrc + 0];
+
+					//Copy the contents of EAX into xmm1
 					movdqu xmm1, [eax]; // xmm1 = pSrc[0]
+
 					// low bits of pSrc[0]
+					
+					// Copy the contents of xmm1 into xmm5
 					movdqa xmm5, xmm1;
+
 					punpcklbw xmm5, xmm0; // xmm5 = pSrc[0], low, 16 bit;
 					pmullw xmm5, xmm2; // xmm5 = s0 * a0;
 					paddw xmm6, xmm5; // xmm6 = s0 * a0 + (ff - a0) * d0;
@@ -94,14 +157,15 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					mov eax, dword ptr [pDst + 0];
 					movdqu [eax], xmm6; // done for this component;
 
+					/* ======================= GREEN ======================= */
 					// blending the green;
 					// load d0
 					mov eax, dword ptr[pDst + 4]; 
-					movdqu xmm1, [eax]; // xmm1 = pDst[0]
+					movdqu xmm1, [eax]; // xmm1 = pDst[1]
 					movdqa xmm6, xmm1;
-					punpcklbw xmm6, xmm0; // xmm6 <- pDst[0] low 16bit
+					punpcklbw xmm6, xmm0; // xmm6 <- pDst[1] low 16bit
 					movdqa xmm7, xmm1;
-					punpckhbw xmm7, xmm0; // xmm7 <- pDst[0] high, 16 bit
+					punpckhbw xmm7, xmm0; // xmm7 <- pDst[1] high, 16 bit
 					// load the ff constant
 					movdqu xmm4, [ffconst]; // xmm4 <- ff
 					movdqa xmm5, xmm4; 
@@ -113,10 +177,10 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					pmullw xmm7, xmm5; // xmm7 = (ff - a1) * d1;
 					// load the source;
 					mov eax, dword ptr[pSrc + 4];
-					movdqu xmm1, [eax]; // xmm1 = pSrc[0]
-					// low bits of pSrc[0]
+					movdqu xmm1, [eax]; // xmm1 = pSrc[1]
+					// low bits of pSrc[1]
 					movdqa xmm5, xmm1;
-					punpcklbw xmm5, xmm0; // xmm5 = pSrc[0], low, 16 bit;
+					punpcklbw xmm5, xmm0; // xmm5 = pSrc[1], low, 16 bit;
 					pmullw xmm5, xmm2; // xmm5 = s0 * a0;
 					paddw xmm6, xmm5; // xmm6 = s0 * a0 + (ff - a0) * d0;
 					// high bits of pSrc[0]
@@ -132,6 +196,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					mov eax, dword ptr [pDst + 4];
 					movdqu [eax], xmm6; // done for this component;
 
+					/* ======================= BLUE ======================= */
 					// blending the blue;
 					// load d0
 					mov eax, dword ptr[pDst + 8]; 
