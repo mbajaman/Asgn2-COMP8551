@@ -220,10 +220,10 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					pmullw xmm7, xmm5; // xmm7 = (ff - a1) * d1;
 					// load the source;
 					mov eax, dword ptr[pSrc + 8];
-					movdqu xmm1, [eax]; // xmm1 = pSrc[0]
+					movdqu xmm1, [eax]; // xmm1 = pSrc[2]
 					// low bits of pSrc[0]
 					movdqa xmm5, xmm1;
-					punpcklbw xmm5, xmm0; // xmm5 = pSrc[0], low, 16 bit;
+					punpcklbw xmm5, xmm0; // xmm5 = pSrc[2], low, 16 bit;
 					pmullw xmm5, xmm2; // xmm5 = s0 * a0;
 					paddw xmm6, xmm5; // xmm6 = s0 * a0 + (ff - a0) * d0;
 					// high bits of pSrc[0]
