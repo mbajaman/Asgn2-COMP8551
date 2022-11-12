@@ -29,7 +29,9 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 
 	// loop over the area and blend the pixels ????
 	for (unsigned int y = Y0, srcLine = 0; y < Y1; y++, srcLine++) { // For each row of 1px in the Src image, from top to bottom:
-		unsigned char *pSrc[4];
+		unsigned char* pSrc[4]; // pointers to the 4 channels of the Src image
+		// pSrc holds the color for each row, all reds in [0], all greens in [1], etc.
+		// pSrc at an index is a pointer to the first pixel in that row. (which is why it goes up by 16 each loop of the inner loop, when it grabs the next 16px)
 		pSrc[0] = src.data(0, srcLine, 0, 0); // 4 bits
 		pSrc[1] = src.data(0, srcLine, 0, 1); // 4 bits
 		pSrc[2] = src.data(0, srcLine, 0, 2); // 4 bits = 12 at this point
