@@ -10,7 +10,7 @@
 	t = _mm_loadu_si128((__m128i *) pSrc[(comp)]);                      \
 	_mm_storeu_si128((__m128i *) pDst[(comp)], _mm_packus_epi16(_mm_srli_epi16(_mm_add_epi16(_mm_mullo_epi16(_mm_unpacklo_epi8(t, zero), a0), _mm_mullo_epi16(_mm_sub_epi16(ff, a0), d0)), 8), _mm_srli_epi16(_mm_add_epi16(_mm_mullo_epi16(_mm_unpackhi_epi8(t, zero), a1), _mm_mullo_epi16(_mm_sub_epi16(ff, a1), d1)), 8)))                      
 
-// Takes in two images, src and dst, and blends src into dst at the specified offset.
+// 
 void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int dstYOffset, SimdMode simdMode)
 {
 	if (src.spectrum() != 4) throw cimg_library::CImgException("blitBlend: Src image is missing ALPHA channel");
@@ -28,7 +28,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 	// TODO: Y0 & Y1 need to be aligned.
 
 	// loop over the area and blend the pixels ????
-	for (unsigned int y = Y0, srcLine = 0; y < Y1; y++, srcLine++) { // For each row from top to bottom
+	for (unsigned int y = Y0, srcLine = 0; y < Y1; y++, srcLine++) { // For each row of 1px in the Src image, from top to bottom:
 		unsigned char *pSrc[4];
 		pSrc[0] = src.data(0, srcLine, 0, 0); // 4 bits
 		pSrc[1] = src.data(0, srcLine, 0, 1); // 4 bits
@@ -39,6 +39,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 		pDst[0] = dst.data(X0, y, 0, 0);
 		pDst[1] = dst.data(X0, y, 0, 1);
 		pDst[2] = dst.data(X0, y, 0, 2);
+		//pDst[3] = dst.data(X0, y, 0, 3);
 		// NO ALPHA ??? BUT pDST[4] HUUUH???
 
 		// Fill ffconst with all 255 color values
@@ -60,7 +61,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 		*/
 #pragma region EMMX
 		if (simdMode == SIMD_EMMX) {
-			for (unsigned x = X0; x < X1; x += 16) {		// For each column from left to right:
+			for (unsigned x = X0; x < X1; x += 16) { // For each column of 16px in the Src image, from left to right:
 				__asm {
 					// Save half of pSrc[3] in xmm2 and other half in xmm3 //
 
@@ -70,19 +71,20 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					// Copy the 32-bit address of [pSrc + 12] (Which is pSrc[3]) into eax
 					mov eax, dword ptr[pSrc + 12]			
 
-					//xmm1 <- *pSrc[3] Copy the 128-bit contents of that [eax] points to into xmm1
+					// XMM1 <- *pSrc[3] Copy the 128-bit contents of that [EAX] points to into xmm1
 					movdqu xmm1, [eax];
 					
-					// Copy the contents of xmm1 over to xmm2
+					// Copy the contents of XMM1 over to XMM2
 					movdqa xmm2, xmm1;
 					
-					// Make xmm2 like this => 8 8 0 0 (?)
-					punpcklbw xmm2, xmm0; // xmm2 <- a0, 16bit
+					// Unpack the lower order bits of XMM0 which is the blend factor and put it in XMM2    
+					punpcklbw xmm2, xmm0; // xmm2 <- a0, 16bit out of 32
 					
-					// Copy the contents of xmm1 over to xmm3
+					// Copy the contents of XMM1 over to XMM3
 					movdqa xmm3, xmm1;
 
-					// xxm3 <- a1, 16bit // 0000 0000 XXXX XXXX
+					// Unpack the higher order bits of XMM0 which is the blend factor and put it in XMM3 
+					//XMM3 <- a1, 16bit
 					punpckhbw xmm3, xmm0;
 
 					/* ========================== RED ========================== */
@@ -93,7 +95,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					
 					// Copy the contents of pDst[0] to EAX register
 					// Store the address of pDst[0] to EAX register (pDst is the background)
-					mov eax, dword ptr[pDst + 0]; 
+					mov eax, dword ptr[pDst + 0]; // GET THE RED VALUE OF THE BACKGROUND
 
 					// Copy the 32-bit contents of [eax] into xmm1
 					movdqu xmm1, [eax]; // xmm1 = pDst[0]
@@ -102,35 +104,37 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					movdqa xmm6, xmm1;
 					
 					// Unpack the lower 8 bytes of xmm1 into xmm6
-					punpcklbw xmm6, xmm0; // xmm6 <- pDst[0] low 16bit
+					punpcklbw xmm6, xmm0; // xmm6 <- pDst[0] low 16bit //SPREAD LOWER BITS OF THAT RED VALUE ACROSS XMM6 (INTERSPERCED WITH 0s)
 					
 					// Unpack the higher 8 bytes of xmm1 into xmm7
 					// Copy the contents of xmm1 over to xmm7
 					movdqa xmm7, xmm1;
 					
 					// Unpack the higher
-					punpckhbw xmm7, xmm0; // xmm7 <- pDst[0] high, 16 bit
+					punpckhbw xmm7, xmm0; // xmm7 <- pDst[0] high, 16 bit //SPREAD HIGHER BITS OF THAT RED VALUE ACROSS XMM7 (INTERSPERCED WITH 0s)
 
 					// Copy the contents of ffconst into XMM4
+					// ffconst acts as the "1" when multiplying the pDst with (1 - blendFac)  
 					movdqu xmm4, [ffconst]; // xmm4 <- ff
 
 					// Copy XMM4 (ffconst) to register XMM5
 					movdqa xmm5, xmm4; 
 
-					// Subtract XMM2 (Alpha channel) from XMM5 (ffconst)
-					psubw  xmm5, xmm2; // xmm5 = ff - a0
+					// Subtract XMM2 (Alpha channel) from XMM5 (ffconst) TO GET 1 - a0
+					psubw  xmm5, xmm2; // xmm5 = ff - a0 = (1-a0)
 
-					// Multiply XMM5 (ffconst) and XMM6 (lower half of pDst[0]) (?)
-					pmullw xmm6, xmm5; // xmm6 = (ff - a0) * d0;
+					// destination image[low order] * (1 - blendFactor[low order])
+					pmullw xmm6, xmm5; // xmm6 = (ff - a0) * d0; 
 
 					// now for the upper bits
 					movdqa xmm5, xmm4; // put 4 in 5
-					psubw  xmm5, xmm3; // xmm5 = ff - a1
-					pmullw xmm7, xmm5; // xmm7 = (ff - a1) * d1;
+					psubw  xmm5, xmm3; // xmm5 = ff - a1 = (1-a1)
+
+					// destination image[high order] * (1 - blendFactor[high order])
+					pmullw xmm7, xmm5; // xmm7 = (ff - a1) * d1; 
 
 					// load the source;
-
-					// Store the address of pSrc[0] to EAX register (pSrc is the background)
+					// Store the address of pSrc[0] to EAX register (pSrc is the bubble)
 					mov eax, dword ptr[pSrc + 0];
 
 					//Copy the contents of EAX into xmm1
@@ -154,7 +158,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 					psrlw xmm7, 8;
 					// pack back
 					packuswb xmm6, xmm7; // xmm6 <- xmm6{}xmm7 low bits;
-					mov eax, dword ptr [pDst + 0];
+					mov eax, dword ptr [pDst + 0]; // eax will hold pBlendImg, resulting blended image
 					movdqu [eax], xmm6; // done for this component;
 
 					/* ======================= GREEN ======================= */
@@ -243,10 +247,11 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 				pDst[0] += 16;
 				pDst[1] += 16;
 				pDst[2] += 16;
+				//pDst[3] += 16;
 			}
 		}
 #pragma endregion
-#pragma region SIMD_NONE
+#pragma region SERIAL
 		else if (simdMode == SIMD_NONE) {
 			for (unsigned int x = X0; x < X1; x++) {
 				short diff;
