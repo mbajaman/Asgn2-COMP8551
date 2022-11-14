@@ -62,7 +62,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 		XMM7 = Keeps the color of the Bubble (a.k.a the outline of it)
 		*/
 #pragma region EMMX
-		if (simdMode == SIMD_EMMX) {
+		if (simdMode == SIMD_EMMX) { // RISC Architecture, much more efficient
 			for (unsigned x = X0; x < X1; x += 16) { // For each column of 16px in the Src image, from left to right:
 				__asm {
 					// Save half of pSrc[3] in xmm2 and other half in xmm3 //
@@ -283,7 +283,7 @@ void blitBlend( UCImg &src, UCImg &dst, unsigned int dstXOffset, unsigned int ds
 		}
 #pragma endregion
 #pragma region EMMX_INTRINSICS
-		else if (simdMode == SIMD_EMMX_INTRINSICS) {
+		else if (simdMode == SIMD_EMMX_INTRINSICS) { // CISC Architecture, a bit of overhead
 
 			for (unsigned x = X0; x < X1; x += 16) {
 				register __m128i s0, s1, d0, d1, a0, a1, r0, r1, zero;
