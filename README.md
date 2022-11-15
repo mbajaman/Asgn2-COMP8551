@@ -26,5 +26,9 @@ The SIMD_EMMX_INTRINSICS serial mode is the second fastest. It works in a very s
 Code for parts 3 and 4 can be found beyone line 100 of main.cpp.
 3. In the first function call, the assembly casts the contents of x as a dword ptr into register EAX, but with the pass by reference, it can use lea to simply pass the existing address of the variable into EAX.
 
+4. There is no difference in this case.
+However, making a function inline can cause it to take up additional registers since the function body gets inserted at the point of function call, thereby, requiring additional registers for those variables. This can only be noticed, if there are lots of variables being added by the function call, resulting in additional overhead.
+
+
 
  
