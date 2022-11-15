@@ -98,10 +98,35 @@ void startTankDemoThreads(const char *background, const char *bubble, const char
 	for (int i = 0; i < 3; i++) TerminateThread(threadHandles[i], 0);
 }
 
+// Part 3
+int simpleFunc(int x) {
+	return x * x;
+}
 
+// Part 4
+//void simpleMathFunc(){
+//	int a = 5;
+//	int b = 5;
+//	int c = a * b;
+//}
+
+inline void simpleMathFunc() {
+	int a = 5;
+	int b = 5;
+	int c = a * b;
+}
 
 int main(int argc, char* argv[])
 {
+	// Part 3 - execution
+	int x = 5;
+	int y = simpleFunc(x);
+	//std::cerr << y << std::endl;
+
+	// Part 4 - execution
+	simpleMathFunc();
+	int z = 10;
+
 	int optarg = 1;
 	while (optarg < argc) {
 		if ((argc - optarg) < 2) {
@@ -113,6 +138,5 @@ int main(int argc, char* argv[])
 			optarg += 2;
 		}
 	}
-
 	return 0;
 }
